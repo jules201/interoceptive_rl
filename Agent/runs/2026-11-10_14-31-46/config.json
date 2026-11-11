@@ -1,0 +1,44 @@
+{
+  "env": {
+    "grid_size": 5,
+    "n_stats": 2,
+    "seed": 0,
+    "episode_length": 2000
+  },
+  "agent": {
+    "grid_size": 5,
+    "n_stats": 2,
+    "seed": 0,
+    "lr": 0.1,
+    "gamma": 0.99,
+    "n_bins": 20,
+    "h_min": -1,
+    "h_max": 3,
+    "n": 4,
+    "m": 2,
+    "stat_decrease_per_step": [
+      0.02,
+      0.02
+    ],
+    "stat_replenish_per_resource": [
+      0.4,
+      0.4
+    ],
+    "set_point": 1.0,
+    "epsilon": 0.0,
+    "boundary_penalty": 0.01
+  },
+  "train": {
+    "n_episodes": 2000,
+    "eps_start": 1.0,
+    "eps_end": 0.05
+  },
+  "eval": {
+    "n_eval_episodes": 5,
+    "start_stats": [
+      1.0,
+      1.0
+    ]
+  },
+  "git_commit": "e4ae159"
+}

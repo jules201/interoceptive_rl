@@ -2,15 +2,42 @@ from env import GridWorld
 from agent import Agent
 import numpy as np
 import matplotlib.pyplot as plt
+from pathlib import Path
+from datetime import datetime
+import json
+
+import subprocess
 
 
+config = {
+    "env":   dict(grid_size=5, n_stats=2, seed=0, episode_length=2000),
+    "agent": dict(grid_size=5, n_stats=2, seed=0, lr=0.1, gamma=0.99,
+                  n_bins=20, h_min=-1, h_max=3, n =4, m=2, stat_decrease_per_step=np.array([0.02,0.02]),
+                    stat_replenish_per_resource=np.array([0.4, 0.4]), set_point=1.0, epsilon=0.9, boundary_penalty=0.01, 
+                    storable=[False, True], storable_reward=0.01),
+    "train": dict(n_episodes=2000, eps_start=1.0, eps_end=0.05),
+    "eval":  dict(n_eval_episodes=5, start_stats=[1.0, 1.0]),
+}
 
-env = GridWorld(grid_size=5, n_stats=2, seed=0, episode_length=2000)
-agent = Agent(grid_size=5, env=env, n_stats=2, seed=0)
+env = GridWorld(**config["env"])
+agent = Agent(env=env, **config["agent"])
 
-n_episodes, eps_start, eps_end = 2000, 1.0, 0.05
+n_episodes = config["train"]["n_episodes"]
+eps_start = config["train"]["eps_start"]
+eps_end = config["train"]["eps_end"]
 rollout = 5
 log = []
+
+"""
+Creating run folder to save the config and the log of the training"""
+run_dir = Path("runs") / datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+run_dir.mkdir(parents=True)
+
+commit = subprocess.run(["git", "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+config["git_commit"] = commit
+
+with open(run_dir / "config.json", "w") as f:
+    json.dump(config, f, indent=2, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
 
 for ep in range(n_episodes):
     env.reset() #environment initialization
@@ -127,6 +154,7 @@ axes[1, 1].set_title("Sub-agent 2: Stats [1.0, 0.4]")
 
 fig.colorbar(im3, ax=axes)
 
+fig.savefig(run_dir / "value_maps.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 
@@ -216,7 +244,7 @@ on_res = run["on_resource"][:-1][:n]
 locs = run["locs"][1:][:n]
 time = np.arange(len(stats))
 
-fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, figsize=(11, 6))
+fig, ax1 = plt.subplots(figsize=(11, 4))
 
 # top: internal stats
 for i in range(agent.n_stats):
@@ -228,15 +256,11 @@ ax1.axhline(agent.h_min, color="r", ls="--", lw=1, label="death bounds")
 ax1.axhline(agent.h_max, color="r", ls="--", lw=1)
 ax1.set_ylabel("internal stat")
 ax1.legend(loc="upper right", ncol=4, fontsize=8)
+ax1.set_xlabel("time step")
 
-# bottom: location
-ax2.plot(time, locs[:, 0], label="row")
-ax2.plot(time, locs[:, 1], label="col")
-ax2.set_ylabel("grid coordinate")
-ax2.set_xlabel("time step")
-ax2.legend(loc="upper right")
 
 plt.tight_layout()
+fig.savefig(run_dir / "h_over_time.png", dpi=150, bbox_inches="tight")
 plt.show()
 
 
@@ -250,7 +274,9 @@ locs = run["locs"][1:][:n]
 T = len(stats)
 G = agent.grid_size
 
-fig, (axg, axs) = plt.subplots(1, 2, figsize=(10, 4.5))
+vmaps = np.array([agent.value_map(s) for s in stats])   # shape (T, n_stats, G, G)
+
+fig, (axg, axs, axq0, axq1) = plt.subplots(1, 4, figsize=(18, 4.5))
 
 # static parts, drawn once
 axg.set_xlim(-0.5, G - 0.5)
@@ -275,13 +301,28 @@ dot, = axg.plot([], [], "o", color="black", markersize=14)
 vline = axs.axvline(0, color="gray")
 label = axg.text(0.5, -0.12, "", transform=axg.transAxes, ha="center")
 
+# value maps: use the same vmin/vmax for both sub-agents, so the color scale is consistent
+vmin, vmax = vmaps.min(), vmaps.max()
+im0 = axq0.imshow(vmaps[0, 0], vmin=vmin, vmax=vmax)
+im1 = axq1.imshow(vmaps[0, 1], vmin=vmin, vmax=vmax)
+dot0, = axq0.plot([], [], "wo")
+dot1, = axq1.plot([], [], "wo")
+
+axq0.set_title("sub-agent 1 value") 
+axq1.set_title("sub-agent 2 value")
+fig.colorbar(im0, ax=[axq0, axq1])
+
 def update(frame):
     r, c = locs[frame]
     dot.set_data([c], [r])                  # set_data wants sequences
     vline.set_xdata([frame, frame])
     label.set_text(f"t={frame}   stats = {np.round(stats[frame], 2)}")
+    im0.set_data(vmaps[frame, 0])
+    im1.set_data(vmaps[frame, 1])   
+    dot0.set_data([c], [r])
+    dot1.set_data([c], [r])
     return dot, vline, label
 
 anim = FuncAnimation(fig, update, frames=T, interval=100, blit=False)
-anim.save("rollout.gif", writer=PillowWriter(fps=10))
+anim.save(run_dir / "rollout.gif", writer=PillowWriter(fps=5))
 plt.close(fig)

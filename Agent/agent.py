@@ -13,7 +13,7 @@ class Agent:
                  grid_size=5,
                  lr=0.1,
                  gamma = 0.99, #discount factor for future rewards
-                 stat_decrease_per_step=0.02, 
+                 stat_decrease_per_step=np.array([0.02,0.02]), #how much the internal stats decrease per time step
                  stat_replenish_per_resource=np.array([0.4,0.4]),
                  m=2, #exponent for drive function
                  n=4, #exponent for drive function
@@ -21,11 +21,13 @@ class Agent:
                  set_point=1.0, #desired level of stat
                  n_actions = 5,
                  n_bins =20,
-                 epsilon =1.0,
+                 epsilon =0.5,
                  seed = None,
                  h_min = -1,
                  h_max = 3,
-                 boundary_penalty = 0.01
+                 boundary_penalty = 0.01,
+                 storable = [False, False],
+                 storable_reward = 0.02 #reward for being above the set point for storable stats
                  
 
 
@@ -54,7 +56,8 @@ class Agent:
         self.Q = np.zeros((n_stats, self.n_states, n_actions))
         self.boundary_penalty = boundary_penalty
         self.dead = False
-        
+        self.storable = storable #list of booleans for each stat; if True the stat is storable and can be replenishedby collecting resources; if False the stat is not storable and cannot be replenished by collecting resources
+        self.storable_reward = storable_reward #reward for being above the set point for storable stats
 
 
 
@@ -108,14 +111,24 @@ class Agent:
         drive_prev = self.compute_drive(h_prev)
         drive_curr = self.compute_drive(h_new)
 
+
+
         rewards = drive_prev - drive_curr
 
+        # If a stat is storable and the new value is above the set point, give a positive reward for that module. This encourages the agent to collect resources even if it is above the set point
+        for i in range(self.n_stats):
+            if self.storable[i] and h_new[i] > self.set_point:
+                 rewards[i] = self.storable_reward  # Give a small positive reward for being above the set point for storable stats
+               # rewards[i] = abs(rewards[i])   # Give a small positive reward for being above the set point for storable stats
+               # if on_resource[i]:  # Only give a bonus if the drive is reduced
+                #    rewards[i] = 0.04  # Give a bonus reward for reducing drive
+               # else: 
+                 #   rewards[i] = 0  
+
+        #additional penalty for dead stats; if a stat is dead, the reward for that stat is reduced by the current drive value; this encourages the agent to avoid dying
         for i in range(self.n_stats):
             if dead_per_stat[i]:
                 rewards[i] -= drive_curr[i]
-       
-        
-       
 
         # Additional penalty for being stuck at a boundary
       #  stuck = (h_new == h_prev)
