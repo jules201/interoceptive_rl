@@ -14,7 +14,7 @@ config = {
     "agent": dict(grid_size=5, n_stats=2, seed=0, lr=0.1, gamma=0.99,
                   n_bins=20, h_min=-1, h_max=3, n =4, m=2, stat_decrease_per_step=np.array([0.02,0.02]),
                     stat_replenish_per_resource=np.array([0.4, 0.4]), set_point=1.0, epsilon=0.9, boundary_penalty=0.01, 
-                    storable=[False, True], storable_reward=0.01),
+                    storable=[True, False], storable_reward=0.03),
     "train": dict(n_episodes=2000, eps_start=1.0, eps_end=0.05),
     "eval":  dict(n_eval_episodes=5, start_stats=[1.0, 1.0]),
 }
@@ -39,20 +39,24 @@ config["git_commit"] = commit
 with open(run_dir / "config.json", "w") as f:
     json.dump(config, f, indent=2, default=lambda o: o.tolist() if hasattr(o, "tolist") else str(o))
 
+ep_len  = np.zeros(n_episodes, dtype=int)
+ep_died = np.zeros(n_episodes, dtype=bool)
+ep_dev  = np.zeros((n_episodes, agent.n_stats))
+
 for ep in range(n_episodes):
     env.reset() #environment initialization
     agent.make_stats() # internal stats initialization
     loc = env.agent_pos.copy() # copy of the agent location
     # decay epsilon linearly over the first half of training
     agent.epsilon = max(eps_end, eps_start - (eps_start - eps_end) * ep / (0.5 * n_episodes)) 
-
+    dev_sum = np.zeros(agent.n_stats)
     for t in range(env.episode_length):
         a = agent.select_action(loc, agent.stats, training=True) #select action based on agent location and internal stats
 
         loc_next, on_resource, done = env.step(a)
 
         h_prev, rewards, dead, dead_per_stat = agent.organism_step(on_resource)
-        
+        dev_sum += np.abs(agent.set_point - agent.stats)
 
         deltas = agent.update_value_map(location=loc, stats_old=h_prev, stats_new=agent.stats, action=a, rewards=rewards, location_new=loc_next, done=dead)
 
@@ -60,6 +64,11 @@ for ep in range(n_episodes):
         loc = loc_next
         if dead or done:
             break
+    ep_len[ep]  = t + 1
+    ep_died[ep] = dead
+    ep_dev[ep]  = dev_sum / (t + 1)
+
+np.savez(run_dir / "episode_metrics.npz", ep_len=ep_len, ep_died=ep_died, ep_dev=ep_dev)
 
 
 print("Q min:", agent.Q.min())
@@ -198,6 +207,11 @@ print("mean length, first 200 eps:", lengths[:200].mean())
 print("mean length, last 200 eps:", lengths[-200:].mean())
 print("episodes shorter than 2000:", np.mean(lengths < 2000))
 
+#new test to check that the log is consistent with the episode lengths
+
+print("Checking episode lengths...")
+assert (np.bincount([e[0] for e in log]) == ep_len).all()       
+assert ((ep_len == env.episode_length) | ep_died).all()
 
 
 n_eval_episodes = 5

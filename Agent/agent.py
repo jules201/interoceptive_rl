@@ -117,7 +117,7 @@ class Agent:
 
         # If a stat is storable and the new value is above the set point, give a positive reward for that module. This encourages the agent to collect resources even if it is above the set point
         for i in range(self.n_stats):
-            if self.storable[i] and h_new[i] > self.set_point:
+            if self.storable[i] and h_new[i] > self.set_point and on_resource[i]:
                  rewards[i] = self.storable_reward  # Give a small positive reward for being above the set point for storable stats
                # rewards[i] = abs(rewards[i])   # Give a small positive reward for being above the set point for storable stats
                # if on_resource[i]:  # Only give a bonus if the drive is reduced
@@ -140,7 +140,7 @@ class Agent:
 
     def compute_drive(self, h ):
         """
-        quadratic drive function with m =4, n =2 
+        quadratic drive function with m =2, n =4
         absolute of (stats - set_point); the higher the bigger the drive 
         
         """
